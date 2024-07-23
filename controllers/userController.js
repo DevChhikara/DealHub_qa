@@ -14,7 +14,7 @@ exports.getClientKey = async (req, res) => {
         });
 
         // Generate random key
-        const randomNumber = Math.floor(1000 + Math.random() * 9000);
+        const randomNumber = Math.floor(1000 + Math.random() * 9000 * 1);
         const randomNumber2 = Math.floor(1000 + Math.random() * 9000);
         const key = crypto.randomUUID().replace(/-/g, '!').substring(0, 12) + randomNumber.toString() + randomNumber2.toString();
         const currentSecretKey = Buffer.from(key).toString('base64');
