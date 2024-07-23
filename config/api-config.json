@@ -1,0 +1,12 @@
+{
+  "NODE_ENV": "development",
+  "mysql": {
+    "DB_HOST": "localhost",
+    "DB_USER": "root",
+    "DB_PASS": "wavxng_1",
+    "DB_PORT": "3306",
+    "DB_NAME": "dealhub_qa"
+  },
+  "HOST": "localhost",
+  "PORT": "5050"
+}
