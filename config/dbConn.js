@@ -23,13 +23,13 @@ sequelize
     console.error('Unable to connect to database:', err)
   })
 
-const db = {}
-
-db.sequelize = sequelize
-db.Sequelize = Sequelize
-
 // Models/tables
 
+const AuthenticationParameters = require('../models/Authentication/authenticationParameters')(sequelize);
 
-db.userKeyModel = require('../models/userKeyModel')(sequelize, Sequelize);
-module.exports = db
+const AuthenticationDetail = require('../models/Authentication/authenticationDetailParameters')(sequelize);
+module.exports = {
+  sequelize,
+  AuthenticationParameters,
+  AuthenticationDetail,
+};
