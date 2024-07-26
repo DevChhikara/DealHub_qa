@@ -1,3 +1,4 @@
+const ASEncryptDecrypt = require("../services/ASEncryptDecrypt");
 function sp_get_riskfactor_masters(model) {
   return (req, res) => {
     if (!model) {
@@ -19,7 +20,7 @@ function sp_get_riskfactor_masters(model) {
       return res.status(400).json(result);
     }
 
-    let userid = decryptStringAES(
+    let userid = ASEncryptDecrypt.decryptStringAES(
       CommonFunctions.CommonKeyClass.Key,
       model.userid
     );
@@ -39,7 +40,7 @@ function sp_get_riskfactor_masters(model) {
       const randomnum =
         Math.floor(Math.random() * (999999 - 110000 + 1)) + 110000;
       let Keynew = "0c24f9de!b" + randomnum;
-      let data = encryptStringAES(Keynew, json);
+      let data = ASEncryptDecrypt.encryptStringAES(Keynew, json);
       data = `${data}*$${randomnum}`;
       return res.status(200).send(data);
     }
@@ -81,7 +82,7 @@ function getRiskDetails(model) {
       const randomnum =
         Math.floor(Math.random() * (999999 - 110000 + 1)) + 110000;
       let Keynew = "0c24f9de!b" + randomnum;
-      let data = encryptStringAES(Keynew, json);
+      let data = ASEncryptDecrypt.encryptStringAES(Keynew, json);
       data = `${data}*$${randomnum}`;
       return res.status(200).send(data);
     }
@@ -112,7 +113,7 @@ function insertOrUpdateRiskFactor(models) {
     let _RiskFactorService = getObjectCompanyWise(models[0].companyName);
 
     models.forEach((model) => {
-      let userid = decryptStringAES(
+      let userid = ASEncryptDecrypt.decryptStringAES(
         CommonFunctions.CommonKeyClass.Key,
         model._created_by
       );
