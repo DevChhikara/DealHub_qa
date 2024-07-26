@@ -47,7 +47,7 @@ function sp_get_riskfactor_masters(model) {
   };
 }
 
-function getRiskDetails(model) {
+function sp_get_riskdetails(model) {
   return (req, res) => {
     if (!model) {
       const result = {
@@ -89,7 +89,7 @@ function getRiskDetails(model) {
   };
 }
 
-function insertOrUpdateRiskFactor(models) {
+function sp_insert_update_riskfactor(models) {
   return (req, res) => {
     if (!models || !Array.isArray(models) || models.length === 0) {
       const result = {
@@ -146,6 +146,6 @@ function insertOrUpdateRiskFactor(models) {
 
 module.exports = {
   sp_get_riskfactor_masters,
-  getRiskDetails,
-  insertOrUpdateRiskFactor,
+  sp_get_riskdetails,
+  sp_insert_update_riskfactor,
 };

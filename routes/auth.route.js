@@ -11,9 +11,9 @@ router.post(
   "/GetRiskFactorMaster",
   RiskFactorController.sp_get_riskfactor_masters
 );
-router.post("/GetRiskdetails", RiskFactorController.getRiskDetails);
+router.post("/GetRiskdetails", RiskFactorController.sp_get_riskdetails);
 router.post(
   "/RiskFactorInsertUpdate",
-  RiskFactorController.insertOrUpdateRiskFactor
+  RiskFactorController.sp_insert_update_riskfactor
 );
 module.exports = router;
