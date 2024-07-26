@@ -2,7 +2,7 @@ var fs = require('fs');
 function getUserHome() {
   return process.env[process.platform === 'win32' ? 'USERPROFILE' : 'HOME'];
 }
-var serverConfigPath = getUserHome() + '/Desktop/mahendra2/DealHub_qa/config/api-config.json';
+var serverConfigPath = getUserHome() + '/devlopment/DealHub/CodeBase/Dealhub_qa-main/config/config.js';
 console.log(serverConfigPath)
 
 var selectedConfigPath;

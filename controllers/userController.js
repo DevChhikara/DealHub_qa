@@ -6,7 +6,7 @@ const authenticationServices = require('../services/authenticationServices')
 const encryptionServices = require('../services/ASEncryptDecrypt');
 const secretKeyGenerators = require('./utility/secretKeyGenerators');
 const antiForgeryVerify = require('./utility/antiForgeryVerify');
-
+const writeLogToFile = require('../models/Helpers/WriteToLogFile');
 
 //this is may be converted into middleware in future
 const validateLogin = [
@@ -17,11 +17,11 @@ const validateLogin = [
     body('_role_name').notEmpty().withMessage('status is required'),
     body('_UserName').notEmpty().withMessage('Privilege Name is required'),
     body('_ispasswordchanged').notEmpty().withMessage('ispassword is required'),
-    
+
 ];
 
 
-function verifyClientIDkey(model){
+function verifyClientIDkey(model) {
     try {
         const skey = loginKey.find(u => u.ClientID === model._ClientId);
         if (skey) {
@@ -35,7 +35,7 @@ function verifyClientIDkey(model){
 
             return mainSecretkey;
         } else {
-            return '401'; 
+            return '401';
         }
     } catch (error) {
         console.error('Error verifying client ID key:', error);
@@ -46,7 +46,7 @@ function verifyClientIDkey(model){
 async function verifyLogin(req, res) {
 
     //In Node there is no Builtin validator like (ModelState.isValid() in ASP.NET) so this block of code is added
-    const errors = validationResult(req);
+    const errors = validateLogin(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ MsgNo: 400, MsgType: 'E', Message: 'Validation failed', Validation: errors.array() });
     }
@@ -60,7 +60,7 @@ async function verifyLogin(req, res) {
     try {
 
 
-        const secretKey = verifyClientIDkey(model); 
+        const secretKey = verifyClientIDkey(model);
         if (secretKey === '401') {
             return res.status(401).json({ MsgNo: 401, MsgType: 'E', Message: 'Invalid client!' });
         }
@@ -70,7 +70,7 @@ async function verifyLogin(req, res) {
         model._password = hashedPassword;
         const decryptedUserCode = encryptionServices.decryptStringAES(secretKey, model._user_code);
         model._user_code = decryptedUserCode;
-        const authDetails = await authenticationServices.authenticateUserWithAttempts(model); 
+        const authDetails = await authenticationServices.authenticateUserWithAttempts(model);
         if (authDetails.length === 0 || authDetails[0].status !== 'success') {
             return res.status(401).json({
                 MsgNo: 401,
@@ -98,7 +98,7 @@ async function verifyLogin(req, res) {
             }
         };
 
-        await authenticationServices.updateToken(model); 
+        await authenticationServices.updateToken(model);
 
         return res.status(200).json(loginResponse);
     } catch (error) {
@@ -108,8 +108,8 @@ async function verifyLogin(req, res) {
 }
 
 async function getClientKey(req, res) {
-    try {        
-        
+    try {
+
         await UserKey.destroy({
             where: {
                 StampDate: {
@@ -118,7 +118,7 @@ async function getClientKey(req, res) {
             }
         });
 
-        
+
         const randomNumber = Math.floor(1000 + Math.random() * 9000 * 1);
         const randomNumber2 = Math.floor(1000 + Math.random() * 9000);
         const key = crypto.randomUUID().replace(/-/g, '!').substring(0, 12) + randomNumber.toString() + randomNumber2.toString();
@@ -130,10 +130,10 @@ async function getClientKey(req, res) {
             StampDate: new Date()
         });
 
-        ErrorService.writeLogToFile(`userKey  ${JSON.stringify(userKey)}`);
+        writeLogToFile(`userKey  ${JSON.stringify(userKey)}`);
         res.status(200).json(userKey);
     } catch (error) {
-        ErrorService.writeLogToFile(`Exception in clientKey:  ${error.toString()}`);
+        writeLogToFile(`Exception in clientKey:  ${error.toString()}`);
         res.status(400).json({ message: error.message });
     }
 };
