@@ -1,4 +1,5 @@
 const ASEncryptDecrypt = require("../services/ASEncryptDecrypt");
+const getObjectCompanyWise = require("../services/GetObjectCompany/GetObjectCompanyWise");
 function sp_get_riskfactor_masters(model) {
   return (req, res) => {
     if (!model) {
