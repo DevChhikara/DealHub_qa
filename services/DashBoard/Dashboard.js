@@ -1,5 +1,5 @@
-const { Sequelize ,QueryTypes} = require('sequilize');
-const sequelize = require('../config/dbConn');
+const { Sequelize, QueryTypes } = require('sequelize');
+const sequelize = require('../config/dbConn'); 
 const DashBoardDetailsParameters = require('../../models/Dashboard/DashBoardDetailsParametres');
 const DashBoardDetailsCountParameters = require('../../models/Dashboard/DashBoardDetailsCountParameters');
 const TimelineHistory =  require('../../models/Dashboard/TimelineHistory');
@@ -220,7 +220,4 @@ module.exports={
     getDetailTimelineHistory,
     getOBFSummaryDetailsVersion,
     getDashboardProgress
-
-
-
 }
