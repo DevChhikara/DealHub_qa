@@ -5,6 +5,8 @@ const { DataTypes } = require('sequelize');
 const { json } = require('sequelize');
 const JsonConvert = require('json-convert');
 const { URL } = require('url');
+const { stringify } = require('json');
+const winston = require('winston');
 
 // importing used models : 
 const GetObfMasterParameters = require('../../models/Dashboard/ObfCreationParameters');
@@ -1027,7 +1029,357 @@ function returnPostApproval(url, method, json) {
     });
 }
 
+//// 
+async function saveCustomerSAPCustomerCode(filters, _dh_header_id, _created_by) {
+    const _SaveAttachmentDetailsParameters = [];
 
+    try {
+        // If filters list is empty, add a default filter
+        if (filters.length === 0) {
+            const filter = {
+                _dh_header_id,
+                _created_by,
+                _sap_customer_code: '', // Assuming you might need a default value
+            };
+            filters.push(filter);
+        }
+
+        let cnt = 0;
+
+        // Iterate over each filter and perform the database operation
+        for (const filter of filters) {
+            cnt += 1;
+            let deletedata = cnt === 1 ? "Y" : "N";
+
+            const [results, metadata] = await sequelize.query(
+                'CALL sp_save_dh_sap_customer_code(:_dh_header_id, :_sap_customer_code, :_user_id, :_deletedata)',
+                {
+                    replacements: {
+                        _dh_header_id: filter._dh_header_id,
+                        _sap_customer_code: filter._sap_customer_code || '',
+                        _user_id: filter._created_by,
+                        _deletedata: deletedata,
+                    },
+                    type: Sequelize.QueryTypes.RAW,
+                }
+            );
+
+            // Process the results and add them to _SaveAttachmentDetailsParameters
+            results.forEach((row) => {
+                const _Details = {
+                    status: row.status || null,
+                    message: row.message || null,
+                    dh_header_id: parseInt(filter._dh_header_id, 10),
+                    dh_id: parseInt(filter._dh_id, 10),
+                };
+                _SaveAttachmentDetailsParameters.push(_Details);
+            });
+        }
+
+        return _SaveAttachmentDetailsParameters;
+    } catch (error) {
+        // Handle errors
+        const errordetails = `Error in Save Customer SAP Customer Code at ${new Date().toISOString()}\n${error.toString()}`;
+        writeLogObfCreation(errordetails);
+
+        // Add a default failed response
+        const _Details = {
+            status: "Failed",
+            message: "Error in saving parameters",
+        };
+        _SaveAttachmentDetailsParameters.push(_Details);
+
+        return _SaveAttachmentDetailsParameters;
+    }
+}
+////// 
+async function saveComments(filter) {
+    const _SaveAttachmentDetailsParameters = [];
+
+    try {
+        // Execute the stored procedure to save comments
+        const [results, metadata] = await sequelize.query(
+            'CALL sp_add_dh_comments(:_dh_header_id, :_dh_comment, :_user_id)',
+            {
+                replacements: {
+                    _dh_header_id: filter._dh_header_id,
+                    _dh_comment: filter._dh_comment || '',
+                    _user_id: filter._created_by,
+                },
+                type: Sequelize.QueryTypes.RAW,
+            }
+        );
+
+        // Process the results and add them to _SaveAttachmentDetailsParameters
+        results.forEach((row) => {
+            const _Details = {
+                status: row.status || null,
+                message: row.message || null,
+                dh_header_id: parseInt(filter._dh_header_id, 10),
+                dh_id: parseInt(filter._dh_id, 10),
+            };
+            _SaveAttachmentDetailsParameters.push(_Details);
+        });
+
+        return _SaveAttachmentDetailsParameters;
+    } catch (error) {
+        // Handle errors
+        const errordetails = `Error in Save comment at ${new Date().toISOString()}\n${error.toString()}`;
+        writeLogObfCreation(errordetails);
+
+        // Add a default failed response
+        const _Details = {
+            status: "Failed",
+            message: "Error in saving comments",
+        };
+        _SaveAttachmentDetailsParameters.push(_Details);
+
+        return _SaveAttachmentDetailsParameters;
+    }
+}
+//////
+async function saveAttachmentsOBFSummary(filters) {
+    const _SaveAttachmentDetailsParameters = [];
+
+    try {
+        let i = 0;
+
+        for (const filter of filters) {
+            // Initialize a transaction for each filter
+            const transaction = await sequelize.transaction();
+
+            try {
+                if (i === 0) {
+                    // Execute the stored procedure sp_delete_attachment_descriptionwise
+                    await sequelize.query(
+                        'CALL sp_delete_attachment_descriptionwise(:_dh_header_id, :_description)',
+                        {
+                            replacements: {
+                                _dh_header_id: filter._dh_header_id,
+                                _description: filter._description,
+                            },
+                            transaction,
+                        }
+                    );
+                    i++;
+                }
+
+                if (filter._fname !== "Remove all Details" && filter._fpath !== "Remove all Details") {
+                    // Execute the stored procedure sp_save_dh_attachments
+                    const [results] = await sequelize.query(
+                        'CALL sp_save_dh_attachments(:_dh_id, :_dh_header_id, :_fname, :_fpath, :_description, :_user_id)',
+                        {
+                            replacements: {
+                                _dh_id: filter._dh_id,
+                                _dh_header_id: filter._dh_header_id,
+                                _fname: filter._fname,
+                                _fpath: filter._fpath,
+                                _description: filter._description,
+                                _user_id: filter._created_by,
+                            },
+                            transaction,
+                        }
+                    );
+
+                    results.forEach((row) => {
+                        const _Details = {
+                            status: row.status || null,
+                            message: row.message || null,
+                        };
+                        _SaveAttachmentDetailsParameters.push(_Details);
+                    });
+
+                    // Check for OIC Trigger Final Agreement Uploaded Status
+                    if (filter._description === "FinalAgg") {
+                        const [rows] = await sequelize.query(
+                            'CALL sp_getdhattachmentdataforOIC(:dhheaderid, :dhid, :_user_id)',
+                            {
+                                replacements: {
+                                    dhheaderid: filter._dh_header_id,
+                                    dhid: filter._dh_id,
+                                    _user_id: filter._created_by,
+                                },
+                                transaction,
+                            }
+                        );
+
+                        if (rows.length > 0 && filter._dh_phase_id === 1) {
+                            const res = {
+                                _oppid: rows[0].opportunity_id,
+                                _userid: filter._created_by,
+                                _param: "FinalAgg Upload",
+                                _obfid: "",
+                            };
+                            await getDHStatusFromOIC(res); // Assume this is an async function
+                        }
+                    }
+                } else {
+                    const _Details = {
+                        status: "Success",
+                        message: "Successful",
+                    };
+                    _SaveAttachmentDetailsParameters.push(_Details);
+                }
+
+                // Commit the transaction
+                await transaction.commit();
+            } catch (error) {
+                await transaction.rollback();
+                throw error;
+            }
+        }
+
+        return _SaveAttachmentDetailsParameters;
+    } catch (error) {
+        // Error handling
+        const errordetails = `Error in Save Attachment OBF Summary at ${new Date().toISOString()}\n${error.toString()}`;
+        writeLogObfCreation(errordetails);
+
+        const _Details = {
+            status: "Failed",
+            message: "Error in saving parameters",
+        };
+        _SaveAttachmentDetailsParameters.push(_Details);
+
+        return _SaveAttachmentDetailsParameters;
+    }
+}
+/////// 
+async function getOBFSummaryDataVersionWise(model) {
+    try {
+        const query = `
+            CALL sp_getOBFSummaryData_versionwise(:dh_id, :dh_header_id);
+        `;
+
+        // Execute the stored procedure
+        const result = await sequelize.query(query, {
+            replacements: {
+                dh_id: model.dh_id,
+                dh_header_id: model.dh_header_id
+            },
+            type: QueryTypes.RAW
+        });
+
+        // Assuming result is an array of datasets
+        const rds = result[0]; // First element should contain the dataset
+
+        // Return the JSON stringified version of the dataset
+        return JSON.stringify(rds, null, 2);
+
+    } catch (error) {
+        const errordetails = `Error in Get OBF Summary Data Version-wise at ${new Date().toISOString()}\n${error.toString()}`;
+        writeLogObfCreation(errordetails);
+        return "error";
+    }
+}
+
+////// 
+async function getDHData() {
+    try {
+        const query = `
+            CALL sp_getDHData(:user_id);
+        `;
+
+        // Execute the stored procedure
+        const results = await sequelize.query(query, {
+            replacements: { user_id: 12 }, // Assuming user_id is 12 as per the original code
+            type: QueryTypes.RAW
+        });
+
+        const dhDataList = results[0].map((row) => ({
+            obf: row.obf,
+            action: row.action,
+            approvalstatus: row.approvalstatus,
+            assumptions_and_risks: row.assumptions_and_risks,
+            capex: row.capex,
+            comments: row.comments,
+            createdby: row.createdby,
+            createdon: row.createdon,
+            CurrentStatus: row.CurrentStatus,
+            customername: row.customername,
+            LastActionDate: row.LastActionDate,
+            ebt: row.ebt,
+            grossmargin: row.grossmargin,
+            irr_borrowed_fund: row.irr_borrowed_fund,
+            irr_surplus_cash: row.irr_surplus_cash,
+            LOIPO: row.LOIPO,
+            opportunity_id: row.opportunity_id,
+            paymenttermsindays: row.paymenttermsindays,
+            paymenttermdesc: row.paymenttermdesc,
+            projectbrief: row.projectbrief,
+            projectname: row.projectname,
+            primarylocation: row.primarylocation,
+            projecttype: row.projecttype,
+            sector: row.sector,
+            solutioncategory: row.solutioncategory,
+            subsector: row.subsector,
+            total_cost: row.total_cost,
+            total_margin: row.total_margin,
+            total_project_life: row.total_project_life,
+            total_revenue: row.total_revenue,
+            TypeofService: row.TypeofService,
+            vertical: row.vertical,
+            Verticalname: row.Verticalname
+        }));
+
+        return dhDataList;
+
+    } catch (error) {
+        const errordetails = `Error in getting active users data at ${new Date().toISOString()}\n${error.toString()}`;
+        console.error(errordetails);
+        return null;
+    }
+}
+////// 
+
+async function getAttachmentDocument(model) {
+    try {
+        const query = `
+            CALL sp_get_dh_attachments(:dh_id, :dh_header_id);
+        `;
+
+        // Execute the stored procedure
+        const results = await sequelize.query(query, {
+            replacements: {
+                dh_id: model.dh_id,
+                dh_header_id: model.dh_header_id
+            },
+            type: QueryTypes.RAW
+        });
+
+        // Assuming the procedure returns a DataSet-like structure and the first index contains the data
+        const resultData = results[0]; // If the result is an array of objects, this would work
+        // If `results` is already in the desired format, this step may not be necessary
+
+        return JSON.stringify(resultData, null, 2); // Pretty-printing with 2-space indentation
+
+    } catch (error) {
+        const errordetails = `Error in GetAttachmentDocument at ${new Date().toISOString()}\n${error.toString()}`;
+        console.error(errordetails);
+        return "error";
+    }
+}
+
+
+////// 
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.printf(({ timestamp, message }) => `${timestamp} - ${message}`)
+    ),
+    transports: [
+        new winston.transports.File({ filename: config.logFilePath, level: 'info' }),
+        new winston.transports.Console() // Optional: log to console as well
+    ]
+});
+
+// Function to write log
+function writelogobfcreation(errordetails) {
+    logger.info(errordetails);
+}
+
+//Exports : 
 module.exports = {
     getObfDetailsForPpl,
     ObfCreation,
@@ -1046,8 +1398,12 @@ module.exports = {
     approveRejectObf,
     getDHStatusFromOIC,
     returnPostApproval,
-
-
-
+    saveCustomerSAPCustomerCode,
+    saveComments,
+    saveAttachmentsOBFSummary,
+    getOBFSummaryDataVersionWise,
+    getDHData,
+    getAttachmentDocument,
+    writelogobfcreation,
 
 };
