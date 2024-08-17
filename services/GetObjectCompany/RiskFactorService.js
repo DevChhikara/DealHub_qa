@@ -1,21 +1,79 @@
-const IRiskFactorService = require("./IRiskFactorService").default;
-const {
-  sp_get_riskfactor_masters,
-  sp_get_riskdetails,
-  sp_insert_update_riskfactor,
-} = require("../../controllers/RiskFactorController");
+const mysql = require("mysql");
+const config = require("./config");
 
-class RiskFactorService extends IRiskFactorService {
-  sp_get_riskfactor_masters(model) {
-    return "result from sp_get_riskfactor_masters";
-  }
+const pool = mysql.createPool(config.mysql);
 
-  sp_insert_update_riskfactor(filters) {
-    return [{ message: "result from sp_insert_update_riskfactor" }];
-  }
+const getRiskFactorMasters = (model) => {
+  return new Promise((resolve, reject) => {
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error("Error in connection:", err);
+        reject(err);
+      }
+      const query = `CALL sp_get_riskfactor_masters(?, ?)`;
+      connection.query(
+        query,
+        [model.userid, model.companyName],
+        (error, results) => {
+          connection.release();
+          if (error) {
+            console.error("Error executing query:", error);
+            reject(error);
+          }
+          resolve(JSON.stringify(results));
+        }
+      );
+    });
+  });
+};
 
-  sp_get_riskdetails(model) {
-    return "result from sp_get_riskdetails";
-  }
-}
-module.exports = RiskFactorService;
+const insertOrUpdateRiskFactor = (filters) => {
+  return new Promise((resolve, reject) => {
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error("Error in connection:", err);
+        reject(err);
+      }
+
+      const query = `CALL sp_insert_update_riskfactor(?)`;
+      connection.query(query, [JSON.stringify(filters)], (error, results) => {
+        connection.release();
+        if (error) {
+          console.error("Error executing query:", error);
+          reject(error);
+        }
+        resolve(results);
+      });
+    });
+  });
+};
+const getRiskDetails = (model) => {
+  return new Promise((resolve, reject) => {
+    pool.getConnection((err, connection) => {
+      if (err) {
+        console.error("Error in connection:", err);
+        reject(err);
+      }
+
+      const query = `CALL sp_get_riskdetails(?, ?)`;
+      connection.query(
+        query,
+        [model.userid, model.companyName],
+        (error, results) => {
+          connection.release();
+          if (error) {
+            console.error("Error executing query:", error);
+            reject(error);
+          }
+          resolve(JSON.stringify(results));
+        }
+      );
+    });
+  });
+};
+
+module.exports = {
+  getRiskFactorMasters,
+  insertOrUpdateRiskFactor,
+  getRiskDetails,
+};
