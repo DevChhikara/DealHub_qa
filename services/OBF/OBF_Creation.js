@@ -1,6 +1,17 @@
 const { Sequelize, QueryTypes } = require('sequelize');
+const { Op } = require('sequelize');
 const sequelize = require('../config/dbConn');
 const { DataTypes } = require('sequelize');
+const { json } = require('sequelize');
+const JsonConvert = require('json-convert');
+const { URL } = require('url');
+
+// importing used models : 
+const GetObfMasterParameters = require('../../models/Dashboard/ObfCreationParameters');
+const SaveServiceParameteredit = require('../../models/Dashboard/')
+
+/// message -> the models used here are not written in correct format so it is advised to check the under path 
+/// -> models/Dashboard/ ..   to confirm the parametres. 
 
 
 async function getObfDetailsForPpl(dhId) {
@@ -436,6 +447,585 @@ async function saveSectorSubSector(filter) {
     }
 }
 
+///// 
+
+async function saveServices(filters) {
+    const SaveAttachementDetailsParameters = [];
+
+    try {
+        for (const filter of filters) {
+            for (const SL of filter.Serviceslist) {
+                const [results] = await sequelize.query(
+                    'CALL sp_save_dh_services(:_dh_header_id, :solution_id, :solutioncategory_id, :solution_Name, :_user_id)',
+                    {
+                        replacements: {
+                            _dh_header_id: filter._dh_header_id,
+                            solution_id: SL.value,
+                            solutioncategory_id: filter.value,
+                            solution_Name: SL.viewValue,
+                            _user_id: filter._created_by
+                        },
+                        type: QueryTypes.RAW
+                    }
+                );
+
+                for (const result of results) {
+                    const Details = {
+                        status: result.status || null,
+                        message: result.message || null,
+                        dh_header_id: filter._dh_header_id,
+                        dh_id: filter._dh_id
+                    };
+                    SaveAttachementDetailsParameters.push(Details);
+                }
+            }
+        }
+
+        return SaveAttachementDetailsParameters;
+    } catch (ex) {
+        const errordetails = `error in save services ${new Date().toISOString()}\n${ex.toString()}`;
+        writelogobfcreation(errordetails);
+
+        return [{
+            status: 'Failed',
+            message: 'Error in saving parameters'
+        }];
+    }
+}
+
+////// 
+
+async function saveAttachments(filters) {
+    const SaveAttachementDetailsParameters = [];
+
+    try {
+        for (const filter of filters) {
+            const [results] = await sequelize.query(
+                'CALL sp_save_dh_attachments(:_dh_id, :_dh_header_id, :_fname, :_fpath, :_description, :_user_id)',
+                {
+                    replacements: {
+                        _dh_id: filter._dh_id,
+                        _dh_header_id: filter._dh_header_id,
+                        _fname: filter._fname,
+                        _fpath: filter._fpath,
+                        _description: filter._description,
+                        _user_id: filter._created_by
+                    },
+                    type: QueryTypes.RAW
+                }
+            );
+
+            for (const result of results) {
+                const Details = {
+                    status: result.status || null,
+                    message: result.message || null
+                };
+                SaveAttachementDetailsParameters.push(Details);
+            }
+        }
+
+        return SaveAttachementDetailsParameters;
+    } catch (ex) {
+        const errordetails = `error in save attachment ${new Date().toISOString()}\n${ex.toString()}`;
+        writelogobfcreation(errordetails);
+
+        return [{
+            status: 'Failed',
+            message: 'Error in saving parameters'
+        }];
+    }
+}
+
+////// 
+
+async function getMastersOBFCreation(model) { /// here in parametre call the OBF model. 
+    try {
+        const [results] = await sequelize.query(
+            'CALL sp_get_master_list(:_user_id)',
+            {
+                replacements: { _user_id: model.userid },
+                type: QueryTypes.RAW
+            }
+        );
+
+        // Assuming `results` is the dataset returned by the stored procedure
+        const jsonResult = JsonConvert.serializeObject(results, null, 2);
+
+        return jsonResult;
+    } catch (ex) {
+        const errordetails = `error in getmasterobfcreation ${new Date().toISOString()}\n${ex.toString()}`;
+        writelogobfcreation(errordetails);
+        return "error";
+    }
+}
+
+//// 
+
+async function getEditObf(filter) {
+    let editobf = new EditObfParameters();
+    editobf.Services = [];
+    editobf.Attachments = [];
+    editobf.sapio = [];
+    editobf.sap_customer_code = [];
+
+    try {
+        const results = await sequelize.query(
+            'CALL sp_getEditObfData(:dh_id, :dh_header_id, :user_code)',
+            {
+                replacements: {
+                    dh_id: filter.dh_id,
+                    dh_header_id: filter.dh_header_id,
+                    user_code: filter.user_code
+                },
+                type: QueryTypes.SELECT
+            }
+        );
+
+        const rds = results; // Assuming this is the dataset returned
+
+        // Sap_IO_number Table
+        if (rds.Sap_IO_number) {
+            rds.Sap_IO_number.forEach(row => {
+                const sap_io = new Customer_SAP_IO_Parameteredit();
+                sap_io._Cust_SAP_IO_Number = row.cust_sap_io_number;
+                editobf.sapio.push(sap_io);
+            });
+        }
+
+        // sap_customer_code Table
+        if (rds.sap_customer_code) {
+            rds.sap_customer_code.forEach(row => {
+                const sap_customer_code = new sap_customer_code_Parameteredit();
+                sap_customer_code._sap_customer_code = row.sap_customer_code;
+                editobf.sap_customer_code.push(sap_customer_code);
+            });
+        }
+
+        // uploaddata Table
+        if (rds.uploaddata) {
+            rds.uploaddata.forEach(row => {
+                editobf._dh_id = parseInt(row.dh_id);
+                editobf._dh_header_id = parseInt(row.dh_header_id);
+                editobf._fname = row.filename;
+                editobf._fpath = row.filepath;
+                editobf._created_by = row.created_by;
+                editobf._dh_project_name = row.dh_project_name;
+                editobf._projecttype = parseInt(row.domain_id || "0");
+                editobf._opportunity_id = row.opportunity_id;
+                editobf._dh_location = row.dh_location;
+                editobf._parent_dh_main_id = parseInt(row.parent_dh_main_id || "0");
+                editobf._vertical_id = parseInt(row.vertical_id);
+                editobf._verticalhead_id = parseInt(row.verticalhead_id);
+                editobf._dh_desc = row.dh_desc;
+                editobf._total_revenue = parseFloat(row.total_revenue);
+                editobf._total_cost = parseFloat(row.total_cost);
+                editobf._total_margin = parseFloat(row.total_margin);
+                editobf._total_project_life = row.total_project_life;
+                editobf._irr_surplus_cash = parseFloat(row.irr_surplus_cash);
+                editobf._ebt = parseFloat(row.ebt);
+                editobf._capex = parseFloat(row.capex);
+                editobf._irr_borrowed_fund = parseFloat(row.irr_borrowed_fund);
+                editobf._is_loi_po_uploaded = row.is_loi_po_uploaded;
+                editobf._assumptions_and_risks = row.assumptions_and_risks;
+                editobf._payment_terms = parseInt(row.payment_terms);
+                editobf._sap_customer_code = row.sap_customer_code;
+                editobf._Sector_Id = parseInt(row.Sector_Id);
+                editobf._SubSector_Id = parseInt(row.SubSector_Id);
+                editobf._customer_name = row.customer_name;
+                editobf._version_name = row.version_name;
+                editobf._dh_comment = row.dh_comment;
+                editobf._loi_po_details = row.loi_po_details;
+                editobf._payment_term_desc = row.payment_term_desc;
+                editobf._solution_category_id = parseInt(row.solution_category_id);
+            });
+        }
+
+        // SolutionServices Table
+        if (rds.SolutionServices) {
+            const dt_distinctsolcategory = rds.SolutionServices.reduce((acc, curr) => {
+                const exists = acc.some(item => item.solutioncategory_id === curr.solutioncategory_id);
+                if (!exists) {
+                    acc.push({
+                        solutioncategory_id: curr.solutioncategory_id,
+                        solutioncategory_name: curr.solutioncategory_name
+                    });
+                }
+                return acc;
+            }, []);
+
+            dt_distinctsolcategory.forEach(row => {
+                const sc = new SaveServiceParameteredit();
+                sc.Serviceslist = [];
+                sc.value = row.solutioncategory_id;
+                sc.Solutioncategory = row.solutioncategory_name;
+
+                const Row_Solutions_In_Category = rds.SolutionServices.filter(service => service.solutioncategory_id === sc.value);
+
+                Row_Solutions_In_Category.forEach(dr => {
+                    const servlist = { value: dr.solution_id, viewValue: dr.solution_name };
+                    sc.Serviceslist.push(servlist);
+                });
+                editobf.Services.push(sc);
+            });
+        }
+
+        // Attachments Table
+        if (rds.Attachments) {
+            rds.Attachments.forEach(dr => {
+                const attachments = new SaveAttachmentParameter();
+                attachments._dh_id = editobf._dh_id;
+                attachments._dh_header_id = editobf._dh_header_id;
+                attachments._created_by = editobf._created_by;
+                attachments._fname = dr.filename;
+                attachments._fpath = dr.filepath;
+                attachments._description = dr.description;
+                editobf.Attachments.push(attachments);
+            });
+        }
+
+        return editobf;
+
+    } catch (ex) {
+        const errordetails = `error in getEditObf ${new Date().toISOString()}\n${ex.toString()}`;
+        writelogobfcreation(errordetails);
+        return null;
+    }
+}
+
+//// 
+async function getPreviousVersion(filter) {
+    let editobf = new previousversion();
+
+    try {
+        const results = await sequelize.query(
+            'CALL sp_get_previous_ppl_obf(:dh_id, :dh_header_id)',
+            {
+                replacements: {
+                    dh_id: filter.dh_id,
+                    dh_header_id: filter.dh_header_id
+                },
+                type: QueryTypes.SELECT
+            }
+        );
+
+        const rds = results; // Assuming this is the dataset returned
+
+        // previousobfppl Table
+        if (rds.previousobfppl) {
+            rds.previousobfppl.forEach(row => {
+                editobf._total_revenue = parseFloat(row.total_revenue);
+                editobf._total_cost = parseFloat(row.total_cost);
+                editobf._total_margin = parseFloat(row.total_margin);
+                editobf._total_project_life = row.total_project_life;
+                editobf._irr_surplus_cash = parseFloat(row.irr_surplus_cash);
+                editobf._ebt = parseFloat(row.ebt);
+                editobf._capex = parseFloat(row.capex);
+                editobf._irr_borrowed_fund = parseFloat(row.irr_borrowed_fund);
+                editobf._payment_terms = parseInt(row.payment_terms);
+                editobf._version_name = row.version_name;
+            });
+        }
+
+        return editobf;
+
+    } catch (ex) {
+        const errordetails = `error in getPreviousVersion ${new Date().toISOString()}\n${ex.toString()}`;
+        writelogobfcreation(errordetails);
+        return null;
+    }
+}
+
+////// 
+
+async function getProjectTypeByID(domain_id) {
+    let result = "";
+    try {
+        const query = `
+            SELECT domain_name 
+            FROM mst_domains 
+            WHERE domain_id = :domain_id
+        `;
+
+        const ds = await sequelize.query(query, {
+            replacements: { domain_id },
+            type: QueryTypes.SELECT
+        });
+
+        if (ds && ds.length > 0) {
+            result = ds[0].domain_name || "N/A";
+        } else {
+            result = "N/A";
+        }
+
+        return result;
+
+    } catch (ex) {
+        const errordetails = `error in getProjectTypeByID ${new Date().toISOString()}\n${ex.toString()}`;
+        writelogobfcreation(errordetails);
+        result = "N/A";
+        return result;
+    }
+}
+
+///// 
+async function getMasterSolutions(model) {
+    let solutionCategories = [];
+    try {
+        const query = `CALL sp_get_master_solutions(:user_id);`;
+
+        const rds = await sequelize.query(query, {
+            replacements: { user_id: model.userid },
+            type: QueryTypes.RAW
+        });
+
+        const dtSolutionCategory = rds[0].solutioncategory;  // Assuming first result set is solutioncategory
+        const dtSolutions = rds[0].solutions;  // Assuming second result set is solutions
+
+        dtSolutionCategory.forEach(row => {
+            let sc = {
+                value: row.value.toString(),
+                viewValue: row.viewValue.toString(),
+                Solutioncategory: row.viewValue.toString(),
+                Solutionservices: []
+            };
+
+            let solutionCategoryId = parseInt(row.value);
+
+            for (let i = 1; i <= solutionCategoryId; i++) {
+                let serviceObj = {
+                    Serviceslist: []
+                };
+
+                let solutionsInCategory = dtSolutions.filter(solution => parseInt(solution.Solutioncategory_Id) === i);
+
+                if (solutionsInCategory.length > 0) {
+                    serviceObj.Solutioncategory = solutionsInCategory[0].solutioncategory_name;
+                    serviceObj.value = solutionsInCategory[0].Solutioncategory_Id.toString();
+
+                    solutionsInCategory.forEach(solution => {
+                        let sl = {
+                            value: solution.value.toString(),
+                            viewValue: solution.viewValue.toString()
+                        };
+
+                        serviceObj.Serviceslist.push(sl);
+                    });
+
+                    sc.Solutionservices.push(serviceObj);
+                }
+            }
+
+            solutionCategories.push(sc);
+        });
+
+        return solutionCategories;
+
+    } catch (ex) {
+        const errordetails = `error in getMasterSolutions ${new Date().toISOString()}\n${ex.toString()}`;
+        writelogobfcreation(errordetails);
+        return null;
+    }
+}
+
+///  keep in mind to write emailSender function in defferent file 
+async function approveRejectObf(filters) {
+    const commanmessgesList = [];
+
+    try {
+        // Call the stored procedure with parameter replacements
+        const [results] = await sequelize.query(`
+            CALL sp_dh_approve_reject(
+                :dhheaderid,
+                :_user_id,
+                :isapproved,
+                :rejectcomment,
+                :rejectionto,
+                :exceptionalcase_cfo,
+                :exceptioncase_ceo,
+                :is_on_hold,
+                :_marginal_exception_requested,
+                :_is_final_agg_validated
+            )
+        `, {
+            replacements: {
+                dhheaderid: filters._dh_header_id,
+                _user_id: filters._created_by,
+                isapproved: filters.isapproved,
+                rejectcomment: filters.rejectcomment,
+                rejectionto: filters.rejectionto,
+                exceptionalcase_cfo: filters.exceptionalcase_cfo,
+                exceptioncase_ceo: filters.exceptioncase_ceo,
+                is_on_hold: filters.is_on_hold,
+                _marginal_exception_requested: filters._marginal_exception_requested,
+                _is_final_agg_validated: filters._is_final_agg_validated
+            },
+            type: Sequelize.QueryTypes.SELECT
+        });
+
+        // Process the results from the stored procedure
+        results.forEach(row => {
+            const details = {
+                status: row.status || 'Unknown',
+                message: row.message || 'No message'
+            };
+            commanmessgesList.push(details);
+        });
+
+        // Attempt to send an email
+        try {
+            await EmailSender_DAL.emailSendingDetails(filters);
+        } catch (emailError) {
+            console.error('Error sending email:', emailError);
+        }
+
+        // Handle additional logic based on approval status
+        try {
+            await writelogobfcreation(`Is approved: ${filters.isapproved}`);
+            if (filters.isapproved === 1 && filters._is_final_agg_validated === 1 && filters._dh_phase_id === 1) {
+                const [rows] = await sequelize.query(`
+                    CALL sp_getdhdataforOICFinalAggValidate(
+                        :dhheaderid,
+                        :_user_id
+                    )
+                `, {
+                    replacements: {
+                        dhheaderid: filters._dh_header_id,
+                        _user_id: filters._created_by
+                    },
+                    type: Sequelize.QueryTypes.SELECT
+                });
+
+                if (rows.length > 0) {
+                    const res = {
+                        _oppid: rows[0].opportunity_id.toString(), // Convert to string safely
+                        _userid: filters._created_by,
+                        _param: 'FinalAgg Validate',
+                        _obfid: ''
+                    };
+                    await getDHStatusFromOIC(res);
+                }
+            } else if (filters.isapproved === 1 && filters._dh_phase_id === 1) {
+                const [rows] = await sequelize.query(`
+                    CALL sp_getdhdataforOIC(
+                        :dhheaderid,
+                        :_user_id
+                    )
+                `, {
+                    replacements: {
+                        dhheaderid: filters._dh_header_id,
+                        _user_id: filters._created_by
+                    },
+                    type: Sequelize.QueryTypes.SELECT
+                });
+
+                await writelogobfcreation(`Rows count: ${rows.length}`);
+                if (rows.length > 0) {
+                    await writelogobfcreation('Sending data to OIC for OBF approval');
+                    const res = {
+                        _oppid: rows[0].opportunity_id.toString(), // Convert to string safely
+                        _userid: filters._created_by,
+                        _param: 'OBF Approval',
+                        _obfid: ''
+                    };
+                    await getDHStatusFromOIC(res);
+                }
+            }
+        } catch (oicError) {
+            await writelogobfcreation(`Error occurred in OIC trigger \n${oicError.toString()}`);
+        }
+
+        return commanmessgesList;
+    } catch (error) {
+        const errordetails = `error in Approve Reject Obf ${new Date().toString()}\n${error.toString()}`;
+        await writelogobfcreation(errordetails);
+
+        return [{
+            status: 'Failed',
+            message: 'Error in saving parameters'
+        }];
+    }
+}
+
+///// 
+async function getDHStatusFromOIC(data) {
+    writeLogObfCreation("oppid : " + data._oppid);
+    writeLogObfCreation("user id : " + data._userid);
+    writeLogObfCreation("param : " + data._param);
+    writeLogObfCreation("obf id : " + data._obfid);
+
+    const inputData = data._param.toString();
+    const userId = data._userid.toString();
+
+    writeLogObfCreation("input data : " + inputData);
+    writeLogObfCreation("userid : " + userId);
+
+    if (inputData === "" || inputData.trim() === "") {
+        writeLogObfCreation("Empty string");
+        // Handle the error response here as per your logic
+        // For example, you can return a specific error response:
+        // return res.status(400).json({ msgNo: HttpStatusCode.BadRequest, msgType: 'E', message: 'Incorrect data' });
+    } else {
+        // UAT
+        writeLogObfCreation("In else");
+        const url = Configuration.OICUATEndPointUrl; // Assuming this is how you fetch the config in Sequelize
+
+        const jsonSerialize = JSON.stringify(data);
+
+        const jsonHeader = "DHData";
+        const firstContent = `{ "${jsonHeader}":[`;
+        const lastContent = "]}";
+        const jsonPass = firstContent + jsonSerialize + lastContent;
+
+        writeLogObfCreation("jsonpass : " + jsonPass);
+        await returnPostApproval(url, "POST", jsonPass); // Assuming this function is async
+    }
+}
+
+///// 
+function returnPostApproval(url, method, json) {
+    const parsedUrl = new URL(url);
+
+    const options = {
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: method,
+        headers: {
+            'Accept': '*/*',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(json),
+        },
+        auth: `${Configuration.OICusr}:${Configuration.OICpsw}`, // Assuming these are configured in Sequelize
+    };
+
+    return new Promise((resolve, reject) => {
+        const req = https.request(options, (res) => {
+            let responseText = '';
+
+            res.on('data', (chunk) => {
+                responseText += chunk;
+            });
+
+            res.on('end', () => {
+                if (res.statusCode === 202) { // HTTP 202 Accepted
+                    writeLogObfCreation("Request was accepted.");
+                    resolve(responseText);
+                } else {
+                    writeLogObfCreation(`Request failed with status code: ${res.statusCode}`);
+                    reject(new Error(`Request failed with status code: ${res.statusCode}`));
+                }
+            });
+        });
+
+        req.on('error', (error) => {
+            writeLogObfCreation(`Request encountered an error: ${error.message}`);
+            reject(error);
+        });
+
+        req.write(json);
+        req.end();
+    });
+}
 
 
 module.exports = {
@@ -445,6 +1035,19 @@ module.exports = {
     editCustomerCodeAndIOOld,
     saveServiceSolutionSector,
     submitDhHeaders,
+    saveSectorSubSector,
+    saveServices,
+    saveAttachments,
+    getMastersOBFCreation,
+    getEditObf,
+    getPreviousVersion,
+    getProjectTypeByID,
+    getMasterSolutions,
+    approveRejectObf,
+    getDHStatusFromOIC,
+    returnPostApproval,
+
+
 
 
 };
